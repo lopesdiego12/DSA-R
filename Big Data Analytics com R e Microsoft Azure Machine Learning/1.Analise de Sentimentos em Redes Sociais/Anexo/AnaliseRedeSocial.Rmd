@@ -1,0 +1,435 @@
+---
+title: "Sentiment Analysis"
+author: "Oracy Martos"
+date: "11/18/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## Sentiment Analysis on Twitter
+
+This project is integrant part of Big Data Analytics with R and Microsoft Azure of Data Scientist Formation. The goal is gather data from social media Twitter then realize sentiment alaysis with the data gathered. To this project can be done, many packages must be installed and loaded.
+
+All this project is descript with all steps. First of all we will use sentiment score then we will use Naive Bayes as classifier algorithm.
+
+
+```{r pacotes, long_output}
+# install.packages("twitteR")
+# install.packages("httr")
+# install.packages("knitr")
+# install.packages("rmarkdown")
+library(twitteR)
+library(httr)
+library(knitr)
+library(rmarkdown)
+
+# Load library created to clean the data.
+source('C:\\Users\\Oracy\\Desktop\\DSA_Projetos\\DSA_Projetos\\Big Data Analytics com R e Microsoft Azure Machine Learning\\1.Analise de Sentimentos em Redes Sociais\\Anexo\\utils.R')
+options(warn=-1)
+```
+
+
+## Step 1 - Authentication
+
+Below we can find the authentication proccess. Rememer that you need to have a developer account on twitter (https://developer.twitter.com/en/apps) and create an app.
+All steps to create the application are specified and detailed on the project specification.
+
+
+```{r authentication}
+# Twitter authentication.
+# Font: https://medium.com/@GalarnykMichael/accessing-data-from-twitter-api-using-r-part1-b387a1c7d3e
+consumer <- "ZiB0QzMeBY0JFwQGZNisMrBuj"
+consumerSecret <- "b8tfwK6bYTBOiQLKPOe4hLCs5kWFdSqtoQNDGhtk7PdC4laqAV"
+accessToken <- "199032609-j4014nhYooOV8xDm6Ngl71jHNUGtcghkWhfIdr23"
+accessSecret <- "pX1AffKYylkjqSUNNiSwaeVXWa0MF11ppA8SZ5PBco5j3"
+
+# Twitter Authentication.
+# Font: https://www.rdocumentation.org/packages/twitteR/versions/1.1.9/topics/setup_twitter_oauth
+twitteR::setup_twitter_oauth(consumer, consumerSecret, accessToken, accessSecret)
+```
+
+
+## Step 2 - Connection and data gathering.
+
+Here we will test the connection and get the tweets. How big is your sample, more accurate is your analysis. But this step may take a long time, depending of your internet connection. 
+We will start with Trump query.
+
+
+```{r connection}
+# Check user timeline if everything is going fine.
+# Font: https://www.r-bloggers.com/visualising-twitter-user-timeline-activity-in-r/
+#twitteR::userTimeline("elonmusk")
+
+# Get tweets.
+# Font: https://www.rdocumentation.org/packages/twitteR/versions/1.1.9/topics/searchTwitter
+
+# SearchString
+query <- "Trump"
+# How many tweets will get
+#quantity <- 500
+# Which language
+#language <- "pt"
+# Since Date
+#sinceDate <- "2018-11-14"
+tweet <- twitteR::searchTwitter(query)#, since = sinceDate)
+
+# Check the first 5 tweets.
+head(tweet)
+```
+
+
+## Step 3 - Text mining
+
+Here we will install TM (Text Mining) package.
+We will convert the tweets from an object to Corpus type, that store data and metadata, after that we will do some clean up proccess, as remove punctuation, convert data to lower case and remove the stopwords.
+
+```{r textmining}
+# Package for Text Mining.
+# Font: https://cran.r-project.org/web/packages/tm/vignettes/tm.pdf
+# Font: https://eight2late.wordpress.com/2015/05/27/a-gentle-introduction-to-text-mining-using-r/
+#install.packages("tm")
+
+# Font: https://cran.r-project.org/web/packages/SnowballC/SnowballC.pdf
+#install.packages("SnowballC")
+library(SnowballC)
+library(tm)
+library(stringr)
+options(warn=-1)
+
+# TM Cleaning, organizing and transformation
+tweetlist <- sapply(tweet, function(x) x$getText())
+tweetlist <- iconv(tweetlist, to = "utf-8", sub="")
+tweetlist <- limpaTweets(tweetlist)
+tweetcorpus <- VCorpus(VectorSource(tweetlist))
+tweetcorpus <- tm_map(tweetcorpus, removePunctuation)
+tweetcorpus <- tm_map(tweetcorpus, tolower)
+#tweetcorpus <- tm_map(tweetcorpus, function(x)removeWords(x, c(stopwords("en"), "Trump")))
+tweetcorpus <- tm_map(tweetcorpus, function(x)removeWords(x, c(stopwords("en"))))
+# Test to see how it is going
+strwrap(tweetcorpus[[1]])
+
+# Should convert to plan text before to create the matrix.
+tweetcorpusPlan <- tm_map(tweetcorpus, PlainTextDocument)
+#tweetListSecond = as.matrix(TermDocumentMatrix(tweetcorpusPlan), control = list(stopwords = c(stopwords("english"), "Trump")))
+tweetListSecond = as.matrix(TermDocumentMatrix(tweetcorpusPlan), control = list(stopwords = c(stopwords("english"))))
+```
+
+
+## Step 4 - Wordcloud, and dendograma
+
+We will create a wordcloud to check the relationshop between the words that occur with high frequecy.
+A table was created with the words frequency then we generate a dendogram, that shows how the words relate and associate with the main theme. (Trump)
+
+
+```{r dendogram}
+# Font: http://www.sthda.com/english/wiki/text-mining-and-word-cloud-fundamentals-in-r-5-simple-steps-you-should-know
+# Install and load wordcloud and RColorBrewer packages
+#install.packages("wordcloud") # word-cloud generator 
+#install.packages("RColorBrewer") # color palettes
+library(wordcloud)
+library(RColorBrewer)
+
+# Generate a wordcloud
+pal2 <- brewer.pal(8,"Dark2")
+
+wordcloud(tweetcorpusPlan, 
+          min.freq = 2, 
+          scale = c(5,1), 
+          random.color = F, 
+          random.order = F,
+          colors = pal2)
+
+# Convert text object to Matrix
+tweetMatrix <- TermDocumentMatrix(tweetcorpusPlan)
+tweetMatrix
+
+# Find more frequent word
+# Font: https://rdrr.io/rforge/tm/man/findMostFreqTerms.html
+findMostFreqTerms(tweetMatrix)
+
+# Search for Association
+# Font: https://rdrr.io/rforge/tm/man/findAssocs.html
+findAssocs(tweetMatrix, "fascist", 0.6)
+
+# Removing sparse terms
+# Font: https://stackoverflow.com/questions/28763389/how-does-the-removesparseterms-in-r-work
+tweetMatrix2 <- removeSparseTerms(tweetMatrix, .90)
+tweetMatrix2
+
+# Creating scale
+tweetMatrix2Scale <- scale(tweetMatrix2)
+tweetMatrix2Scale
+
+# Distance Matrix
+tweetMatrix2Dist <- dist(tweetMatrix2)
+
+# Dendogram
+# Font: https://dendrolab.wordpress.com/2010/11/03/construindo-dendrogramas-usando-o-r/
+tweetMatrix2Hclust <- hclust(tweetMatrix2Dist)
+
+# Creating dendograma (verify how words clustering each other)
+plot(tweetMatrix2Hclust)
+
+# Checking groups
+cutree(tweetMatrix2Hclust, k = 2)
+
+# Visualizing the word groups on dendogram
+# Font: https://stat.ethz.ch/R-manual/R-devel/library/stats/html/rect.hclust.html
+rect.hclust(tweetMatrix2Hclust, k = 2, border = "blue")
+```
+
+
+## Step 5 - Sentiment Analysis
+
+Now we can proceed with the sentiment analysis.
+
+```{r analise}
+# Load packages
+library(syuzhet)
+library(stringr)
+library(plyr)
+
+# Getting sentiment score for each tweet
+# Font: http://dataaspirant.com/2018/03/22/twitter-sentiment-analysis-using-r/
+tweetlistVector <- as.vector(tweetlist)
+emotion <- get_nrc_sentiment(tweetlistVector)
+emotion2 <- cbind(tweetlist, emotion)
+head(emotion2)
+
+# get_sentiment function to extract sentiment score for each of the tweets.
+sentimentValue <- get_sentiment(tweetlistVector)
+
+mostPositive <- tweetlistVector[sentimentValue == max(sentimentValue)]
+
+mostPositive
+
+# Segregating positive and negative tweets
+# Positive Tweets
+positiveTweets <- tweetlistVector[sentimentValue > 0]
+
+head(positiveTweets)
+
+# Negative Tweets
+negativeTweets <- tweetlistVector[sentimentValue < 0]
+
+head(negativeTweets)
+
+# Neutral Tweets
+neutralTweets <- tweetlistVector[sentimentValue == 0]
+
+head(neutralTweets)
+
+# Alternate way to classify as Positive, Negative or Neutral tweets
+categorySentiment <- ifelse(sentimentValue < 0, "Negative", ifelse(sentimentValue > 0, "Positive", "Neutral"))
+
+head(categorySentiment)
+
+categorySentiment2 <- cbind(tweetlistVector, categorySentiment)
+
+head(categorySentiment2)
+
+# Tabule information
+table(categorySentiment)
+```
+
+```{r other way to analise}
+# Other way to Sentiment Analysis
+# Create sentiment.score function
+sentiment.score = function(sentences, pos.words, neg.words, .progress = 'none')
+{
+  
+  # Criando um array de scores com lapply
+  scores = laply(sentences,
+                 function(sentence, pos.words, neg.words)
+                 {
+                   sentence = gsub("[[:punct:]]", "", sentence)
+                   sentence = gsub("[[:cntrl:]]", "", sentence)
+                   sentence =gsub('\\d+', '', sentence)
+                   tryTolower = function(x)
+                   {
+                     y = NA
+                     
+                     # Tratamento de Erro
+                     try_error = tryCatch(tolower(x), error=function(e) e)
+                     if (!inherits(try_error, "error"))
+                       y = tolower(x)
+                     return(y)
+                   }
+                   
+                   sentence = sapply(sentence, tryTolower)
+                   word.list = str_split(sentence, "\\s+")
+                   words = unlist(word.list)
+                   pos.matches = match(words, pos.words)
+                   neg.matches = match(words, neg.words)
+                   pos.matches = !is.na(pos.matches)
+                   neg.matches = !is.na(neg.matches)
+                   score = sum(pos.matches) - sum(neg.matches)
+                   return(score)
+                 }, pos.words, neg.words, .progress = .progress )
+  
+  scores.df = data.frame(text = sentences, score = scores)
+  return(scores.df)
+}
+
+# Mapping the positive and negative words
+pos = readLines("C:\\Users\\Oracy\\Desktop\\DSA_Projetos\\DSA_Projetos\\Big Data Analytics com R e Microsoft Azure Machine Learning\\1.Analise de Sentimentos em Redes Sociais\\Anexo\\palavras_positivas.txt")
+neg = readLines("C:\\Users\\Oracy\\Desktop\\DSA_Projetos\\DSA_Projetos\\Big Data Analytics com R e Microsoft Azure Machine Learning\\1.Analise de Sentimentos em Redes Sociais\\Anexo\\palavras_negativas.txt")
+
+# Testing function on our tweets
+tweetSentiment = sentiment.score(tweetlistVector, pos, neg)
+class(tweetSentiment)
+
+# Checking Score
+# 0 - Expression doesn't have any word on our lists either positive or negative, or there is positive and negative words in the same expression
+# 1 - Expression has positive words
+# -1 - Expression has negative words
+tweetSentiment$score
+```
+
+
+## Step 6 - Generating Sentiment Analysis Score
+
+With the score calculate, we will split by country, this case CA and USA, as way to compare the sentiment between two different region. Generate boxplot and a histogram using lattice package.
+
+
+```{r score}
+# Tweets by country
+caTweets = twitteR::searchTwitter("ca", n = 300, lang = "en")
+usaTweets = twitteR::searchTwitter("usa", n = 300, lang = "en")
+
+# Getting text
+# Font: https://producaoanimalcomr.wordpress.com/2015/12/10/entendendo-o-uso-das-funcoes-apply-lapply-sapply-tapply-mapply/
+caTxt = sapply(caTweets, function(x) x$getText())
+usaTxt = sapply(usaTweets, function(x) x$getText())
+
+# Tweet vector by country
+countryTweet = c(length(caTxt), length(usaTxt))
+
+# Append both text
+countries = c(caTxt, usaTxt)
+
+# Applying function to calculate sentiment score.
+scores = sentiment.score(countries, pos, neg, .progress = 'text')
+
+# Calculating score by country
+scores$countries = factor(rep(c("ca", "usa"), countryTweet))
+scores$muito.pos = as.numeric(scores$score >= 1)
+scores$muito.neg = as.numeric(scores$score <= -1)
+
+# Calculating the total
+numpos = sum(scores$muito.pos)
+numneg = sum(scores$muito.neg)
+
+# Score global
+global_score = round( 100 * numpos / (numpos + numneg) )
+head(scores)
+boxplot(score ~ countries, data = scores)
+
+# Generating a histogram with lattice package
+# install.packages("lattice")
+library("lattice")
+histogram(data = scores, ~score|countries, main = "Sentiment Analysis", xlab = "", sub = "Score")
+```
+
+# Extra    
+```{r sentimento}
+# install.packages("Rstem_0.4-1.tar.gz", repos = NULL, type = "source")
+# install.packages("sentiment_0.2.tar.gz", repos = NULL, type = "source")
+# install.packages("ggplot2")
+library(Rstem)
+library(sentiment)
+library(ggplot2)
+```
+
+## Get Tweets
+
+The tweets are collected by function searchTwitter() from twitteR package.
+
+
+```{r coleta}
+# Gathering tweets
+tweetEn = searchTwitter("Trump", n = 1500, lang = "en")
+
+# Get text
+tweetEn = sapply(tweetEn, function(x) x$getText())
+```
+
+
+# Cleaning, Organazing and Data Transformation
+
+```{r limpeza}
+# Remove http links
+tweetEn = gsub("(https?://*.[^\\s]+)", "", tweetEn)
+# Remove retweets
+tweetEn = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", " ", tweetEn)
+# Remove "#Hashtag"
+tweetEn = gsub("(#\\w*.[^\\s]+)", "", tweetEn)
+# Remove username "@people"
+tweetEn = gsub("(@\\w[^\\s]+)", "", tweetEn)
+# Remove punctuation
+tweetEn = gsub("(\\W)", " ", tweetEn)
+# Remove numbers
+tweetEn = gsub("(\\d)", "", tweetEn)
+# Remove unnecessary blank space
+tweetEn = gsub("\\s+", " ", str_trim(tweetEn))
+
+# Removing NAs Value
+tweetEn = tweetEn[!is.na(tweetEn)]
+names(tweetEn) = NULL
+```
+
+
+## Naive Bayes Classifier
+
+I used the functions classify_emotion() and classify_polarity() from sentiment package, that they are based on Naive Bayes to sentiment analysis. This case the own algorithm do the word classification and we do not need to create words lists, positives neither negatives.
+
+```{r classification}
+# Classifying emotion
+class_emo = classify_emotion(tweetEn, algorithm = "bayes", prior = 1.0)
+emotion = class_emo[,7]
+
+# Replacing NAs to "Neutral"
+emotion[is.na(emotion)] = "Neutral"
+
+# Classifying polarity
+class_pol = classify_polarity(tweetEn, algorithm = "bayes")
+polarity = class_pol[,4]
+
+# Generating a dataframe with the results
+sent_df = data.frame(text = tweetEn, emotion = emotion,
+                     polarity = polarity, stringsAsFactors = FALSE)
+
+# Ordering dataframe
+sent_df = within(sent_df,
+                 emotion <- factor(emotion, levels = names(sort(table(emotion), 
+                                                                decreasing=TRUE))))
+```
+
+
+## Visualization
+
+Finally, using ggplot2 to visualize the results.
+
+
+```{r visualization}
+# Emotions found
+ggplot(sent_df, aes(x = emotion)) +
+  geom_bar(aes(y = ..count.., fill = emotion)) +
+  scale_fill_brewer(palette = "Dark2") +
+  labs(x = "Categories", y = "# Tweets") 
+
+# Polarity
+ggplot(sent_df, aes(x = polarity)) +
+  geom_bar(aes(y = ..count.., fill = polarity)) +
+  scale_fill_brewer(palette = "RdGy") +
+  labs(x = "Sentiment Category", y = "# Tweets")
+
+```
+
+
+## End

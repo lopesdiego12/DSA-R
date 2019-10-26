@@ -1,0 +1,256 @@
+---
+title: "Predicting the Occurrence of Cancer"
+author: "Oracy Martos"
+date: "November 21, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Predicting the Occurrence of Cancer
+
+This project is an integral part of the Big Data Analytics course with R and Microsoft Azure Data Education Training. The goal is to analyze actual data on breast cancer exams performed with women in the US and then predict the occurrence of new cases.
+
+Breast cancer data include 569 observations of cancer biopsies, each with 32 (variable) characteristics. One characteristic is an identification number (ID), another is the diagnosis of cancer, and 30 are numerical laboratory measures. The diagnosis is coded as "M" to indicate malignant or "B" to indicate benign.
+
+## Step 1 - Data Gathering
+
+Here is the data collection, in this case a csv file.
+
+
+```{r gathering}
+# http://archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin+%28Diagnostic%29
+# http://datascienceacademy.com.br/blog/aluno/RFundamentos/Datasets/ML/wisc_bc_data.csv
+
+df <- read.csv(file = "/home/oracy/Documents/DSA_Projetos/DSA_Projetos/Big Data Analytics com R e Microsoft Azure Machine Learning/2.Prevendo a Ocorrencia de Cancer/Anexo/bc_data.csv", header = TRUE, sep = ",")
+str(df)
+
+head(df)
+```
+
+
+## Step 2 - Data Exploration
+
+Regardless of the machine learning method, ID variables should always be deleted. Otherwise, this can lead to erroneous results because the ID can be used to uniquely "predict" each example. Therefore, a model that includes an identifier may suffer from over-adjustment, and it will be very difficult to use it for generalize other data.
+
+
+```{r explorando}
+# Remove ID Column
+# Check if there is some NA value
+# Font: https://stackoverflow.com/questions/6286313/remove-an-entire-column-from-a-data-frame-in-r
+# Font: https://discuss.analyticsvidhya.com/t/how-can-i-check-whether-my-data-frame-contains-na-inf-values-in-some-column-or-not-in-r/1647
+df$id <- NULL
+str(df)
+head(df)
+
+any(is.na(df))
+
+# Many classifiers require that the variables be Factor type
+# Font: https://stats.idre.ucla.edu/r/modules/factor-variables/
+# Font: https://www.statmethods.net/input/valuelabels.html
+df$diagnosis <- factor(df$diagnosis, levels = c("B", "M"), labels = c("Benigno", "Maligno"))
+
+str(df)
+
+# Checking the proportion
+# dfProp <- prop.table(table(df$diagnosis))
+# dfProp <- dfProp * 100
+# dfProp <- round(dfProp, digits = 2)
+
+dfProp <- round(prop.table(table(df$diagnosis)) * 100, digits = 2)
+dfProp
+
+# Central Tendency Measures
+# We detected here a problem of scale between the data, which then need to be normalized
+# The distance calculation made by kNN is dependent on the scale measurements in the inupt data.
+summary(df[c("radius_mean", "area_mean", "smoothness_mean")])
+
+# Normalize function
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+# Testing normalize function - the results should be equals
+normalize(c(1, 2, 3, 4, 5))
+normalize(c(10, 20, 30, 40, 50))
+
+# Normalizing data
+df_norm <- as.data.frame(lapply(df[2:31], normalize))
+#df_norm
+
+# Checking that the normalize worked
+summary(df[c("radius_mean", "area_mean", "smoothness_mean")])
+summary(df_norm[c("radius_mean", "area_mean", "smoothness_mean")])
+```
+
+
+## Step 3: Training the model
+
+With the data properly normalized, we can now begin the process of training the model. To do this, let's split our data set into training data and test data.
+
+```{r treinamento}
+# Installing and loading class package
+# install.packages("class")
+library(class)
+?knn
+
+# Creating training data and test data
+# Font: https://cran.r-project.org/web/packages/dataPreparation/vignettes/train_test_prep.html
+# Font: https://www.analyticsvidhya.com/blog/2015/08/learning-concept-knn-algorithms-programming/
+#nrow(df_norm)
+train_index <- df_norm[1:398,]
+test_index <- df_norm[399:569,]
+#length(train_index)
+#length(test_index)
+
+# Creating labels for training and test data.
+df_train_labels <- df[1:398, 1]
+df_test_labels <- df[399:569, 1]
+#length(df_train_labels)
+#length(df_test_labels)
+
+# Creating the model
+?knn
+model <- knn(train = train_index, test = test_index, cl = df_train_labels, k = 10)
+
+# The function knn() returns a factor type object with the predictions for each example in the test dataset
+class(model)
+```
+
+
+## Step 4: Evaluating and Interpreting the Model
+
+Let us now evaluate the performance of the model.
+
+
+```{r performance}
+# Installing and loading gmodels package
+# Font: https://www.analyticsvidhya.com/blog/2015/08/learning-concept-knn-algorithms-programming/
+#install.packages("gmodels")
+library(gmodels)
+
+# Creating cross table of predicted data vs. current data
+# We will use sample with 171 observations: length (data_teste_labels)
+length(df_test_labels)
+
+# Check the definition of confusion matrix 
+CrossTable(x = df_test_labels, y = model, prop.chisq = FALSE)
+
+# Interpreting results
+# The cross tabel shows 4 possible values, which represent the false/true positive and negative
+# The first columns list the originals labels on the observed data.
+# The two columns of the model (Benign and Malignant) of the model, show the results of the forecast
+# We have:
+# Schenario 1: Benign cell (label) x Benign (Model) - 107 cases - true negative
+# Schenario 2: Benign cell (label) x Malignant (Model) - 00 cases - false positive
+# Schenario 3: Malignant Cell (label) x Benign (Model) - 03 cases - false negative (model missed) 
+# Schenario 4: Malignant Cell (label) x Malignant (Model) - 61 cases - true positive
+
+# Reading the Confusing Matrix (Perspect of having the disease or not)
+
+# True Negative  = Our model predicted that the person did NOT have the disease and the data showed that the person really did NOT have the disease
+# False Positive = Our model predicted that the person had the disease and the data showed that NO, the person had the disease
+# False Negative = Our model predicted that the person did NOT have the disease and the data showed that YES, the person had the disease
+# True Positive = Our model predicted that the person had the disease and the data showed that YES, the person had the disease
+
+# False Positive - Type I Error
+# False Negative - Type II Error
+
+# Model Accuracy: 98.24% (168 out of 171)
+```
+
+
+## Step 5: Optimizing model performance
+ 
+ 
+```{r otimizacao}
+# Using the scale() function to standardize the z-score
+?scale()
+df_z <- as.data.frame(scale(df[-1]))
+#df_z
+
+# Confirming transformation performed successfully
+summary(df_z[c("radius_mean", "area_mean", "smoothness_mean")])
+
+# Creating new training and test datasets
+# Font: https://cran.r-project.org/web/packages/dataPreparation/vignettes/train_test_prep.html
+# Font: https://www.analyticsvidhya.com/blog/2015/08/learning-concept-knn-algorithms-programming/
+train_index_z <- df_z[1:398,]
+test_index_z <- df_z[399:569,]
+#length(train_index_z)
+#length(test_index_z)
+
+# Creating labels for training and test data.
+df_train_labels_z <- df[1:398, 1]
+df_test_labels_z <- df[399:569, 1]
+#length(df_train_labels_z)
+#length(df_test_labels_z)
+
+# Reclassifying
+model_z <- knn(train = train_index, test = test_index, cl = df_train_labels, k = 10)
+
+# Creating a cross table of predicted data vs. current data
+CrossTable(x = df_test_labels_z, y = model_z, prop.chisq = FALSE)
+
+# Testing different values for K
+# Creating training data and test data
+train_index_2 <- df_z[1:398,]
+test_index_2 <- df_z[399:569,]
+#length(train_index_2)
+#length(test_index_2)
+
+# Creating labels for training and test data
+df_train_labels_2 <- df[1:398, 1]
+df_test_labels_2 <- df[399:569, 1]
+#length(df_train_labels_2)
+#length(df_test_labels_2)
+
+# Different values for K
+# model_v3 <- knn(train = train_index, test = test_index, cl = df_train_labels, k = 1)
+# CrossTable(x = df_test_labels_z, y = model_v3, prop.chisq = FALSE)
+
+# model_v4 <- knn(train = train_index, test = test_index, cl = df_train_labels, k = 5)
+# CrossTable(x = df_test_labels_z, y = model_v4, prop.chisq = FALSE)
+
+# model_v5 <- knn(train = train_index, test = test_index, cl = df_train_labels, k = 11)
+# CrossTable(x = df_test_labels_z, y = model_v5, prop.chisq = FALSE)
+
+# model_v6 <- knn(train = train_index, test = test_index, cl = df_train_labels, k = 15)
+# CrossTable(x = df_test_labels_z, y = model_v6, prop.chisq = FALSE)
+
+# model_v7 <- knn(train = train_index, test = test_index, cl = df_train_labels, k = 27)
+# CrossTable(x = df_test_labels_z, y = model_v7, prop.chisq = FALSE)
+
+# model_v8 <- knn(train = train_index, test = test_index, cl = df_train_labels, k = 21)
+# CrossTable(x = df_test_labels_z, y = model_v8, prop.chisq = FALSE)
+```
+
+
+## Step 6 - Calculating the error rate
+
+
+```{r taxaerro}
+prev = NULL
+error_rate = NULL
+
+suppressWarnings(
+  for(i in 1:27){
+    set.seed(101)
+    prev = knn(train = train_index_2, test = test_index_2, cl = df_train_labels_2, k = i)
+    error_rate[i] = mean(df$diagnosis != prev)
+  })
+
+# Getting the k-values and error rates
+#install.packages("ggplot2")
+library(ggplot2)
+k.values <- 1:27
+df_error <- data.frame(error_rate, k.values)
+df_error
+
+# As we increase K, we decrease the model error rate
+ggplot(df_error, aes(x = k.values, y = error_rate)) + geom_point()+ geom_line(lty = "dotted", color = 'red')
+```
+
+## Fim

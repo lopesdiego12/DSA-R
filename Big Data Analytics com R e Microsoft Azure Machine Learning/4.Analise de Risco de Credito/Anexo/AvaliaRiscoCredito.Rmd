@@ -1,0 +1,270 @@
+---
+  title: "RIsk Analysis"
+author: "Oracy Martos"
+date: "November 25, 2018"
+output: pdf_document
+---
+  
+  ```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Risk Analysis
+
+Para esta análise, vamos usar um conjunto de dados German Credit Data, já devidamente limpo e organizado para a criação do modelo preditivo.
+
+Todo o projeto será descrito de acordo com suas etapas.
+
+## Step 1 - Collecting Data
+
+# Set Directory
+setwd("C:\\Users\\omartos\\Git\\DSA_Projetos\\DSA_Projetos\\Big Data Analytics com R e Microsoft Azure Machine Learning\\4.Analise de Risco de Credito\\Anexo")
+getwd()
+
+```{r coleta}
+# Data gathering
+# Loading the dataset into a dataframe
+df <- read.csv('credit_dataset.csv', header = TRUE, sep = ',')
+head(df)
+str(df)
+# credit.rating - Credito aprovado ou nao
+# account.balance - balanco conta bancaria 
+# credit.duration.months - duracao em meses do credito
+# previous.credit.payment. - Status do pagamento do credito anterior
+# credit.purpose - Tipo de Credito proposto
+# credit.amount - Quantidade de credito
+# savings - Poupanca
+# employment.duration - Duracao no emprego atual
+# installment.rate - Taxa de parcelamento
+# marital.status - Estato civil
+# guarantor - Fiador
+# residence.duration - Quanto tempo esta naquela residencia
+# current.assets - Ativos correntes
+# age - Idade do solicitante
+# other.credits - Outros creditos
+# apartment.type - Tipo do apartamento
+# bank.credits - Outros Creditos bancarios
+# occupation - Cargo que ele ocupa na empresa
+# dependents - Quantos dependentes possue
+# telephone - Possue telefone
+# foreign.worker - Trabalhador estrangeiro
+```
+
+
+## Step 2 - Normalizando os Dados
+
+```{r normalizando}
+# Loading my library
+source('utils.R')
+
+# Normalizing the variables
+# os ados possuem diversos valores diferentes, a normalizacao eh aplicada para que todos os dados estejam dentro de uma distribuicao normal.
+numeric.vars <- c("credit.duration.months", "age", "credit.amount")
+df <- scale.features(df, numeric.vars)
+
+# Factor type variables
+factor.vars <- c('credit.rating', 'account.balance', 'previous.credit.payment.status',
+                 'credit.purpose', 'savings', 'employment.duration', 'installment.rate',
+                 'marital.status', 'guarantor', 'residence.duration', 'current.assets',
+                 'other.credits', 'apartment.type', 'bank.credits', 'occupation', 
+                 'dependents', 'telephone', 'foreign.worker')
+
+df <- to.factors(df, factor.vars)
+
+```
+
+
+## Step 3 - Splitting data in training and testing - 60:40 ratio
+# Font: https://cran.r-project.org/web/packages/dataPreparation/vignettes/train_test_prep.html
+
+
+```{r treinamento}
+nrow(df)
+index <- sample(1:nrow(df), 0.6 * nrow(df))
+df_train <- df[index,]
+df_test <- df[-index,]
+length(df_train)
+length(df_test)
+```
+
+
+## Step 4 - Feature Selection
+# Font: https://machinelearningmastery.com/feature-selection-with-the-caret-r-package/
+# Font: https://machinelearningmastery.com/feature-selection-with-the-caret-r-package/
+
+```{r performance}
+#install.packages('caret')
+#install.packages('e1071', dependencies = TRUE)
+#install.packages('randomForest')
+library(caret)
+library(randomForest)
+
+# Running the function
+rfe.results <- feature.selection(feature.vars = df_train[,-1],
+                                 class.var = df_train[,1])
+
+# Viewing Results
+# Conseguimos visualizar todas as variaveis que temos dentro do nosso dataset, e quão impactante cada uma é para uma futura previsão, e quais sao as variaveis menos importante ou de menor impacto, como "dependents", "occupation" e "foreign.worker".
+rfe.results
+varImp(rfe.results)
+predictors(rfe.results)
+plot(rfe.results, type = c("g","o"))
+```
+
+
+## Step 5 - Creating and Evaluating the Model
+
+
+
+```{r avaliando}
+#install.packages('ROCR')
+library(ROCR)
+# Biblioteca de utilitários para construção de gráficos
+source('plot_utils.R')
+
+## separate feature and class variables
+test.feature.var <- df_test[,-1]
+test.class.var <- df_test[,1]
+
+# Building a Logistic Regression Model
+lm.init <- 'credit.rating ~ .'
+lm.init <- as.formula(lm.init)
+lr.model <- glm(formula = lm.init, data = df_train, family = "binomial")
+
+# Viewing the template
+summary(lr.model)
+any(is.na(df))
+
+# Testing the Model in Test Data
+lr.predictions <- predict(lr.model, df_test, type = "response")
+lr.predictions <- round(lr.predictions)
+
+# Evaluating the model
+
+# Interpreting results
+# The cross tabel shows 4 possible values, which represent the false/true positive and negative
+# The first columns list the originals labels on the observed data.
+# The two columns of the model (0 and 1) of the model, show the results of the forecast
+# We have:
+# Schenario 1: 0 cell (label) x 0 (Model) - 49 cases - true negative
+# Schenario 2: 0 cell (label) x 1 (Model) - 41 cases - false positive
+# Schenario 3: 1 Cell (label) x 0 (Model) - 54 cases - false negative (model missed) 
+# Schenario 4: 1 Cell (label) x 1 (Model) - 256 cases - true positive
+
+# Reading the Confusing Matrix (Perspect of having the disease or not)
+
+# True Negative  = Our model predicted that the person did NOT received the credit and the data showed that the person really did NOT received the credit
+# False Positive = Our model predicted that the person received the credit and the data showed that NO, the person received the credit
+# False Negative = Our model predicted that the person did NOT received the credit and the data showed that YES, the person received the credit
+# True Positive = Our model predicted that the person received the credit and the data showed that YES, the person received the credit
+
+# False Positive - Type I Error
+# False Negative - Type II Error
+
+# Model Accuracy: 76.25% (305 out of 400)
+
+confusionMatrix(table(data = lr.predictions, reference = test.class.var), positive = '1')
+```
+
+
+## Step 6 - Optimizing Model
+
+```{r otimizando}
+## Feature selection
+# Ploting the importance for all variables to help to select which one will use to create the model.
+formula <- 'credit.rating ~ .'
+formula <- as.formula(formula)
+control <- trainControl(method = "repeatedcv", number = 10, repeats = 2)
+model <- train(formula, data = df_train, method = "glm", trControl = control)
+importance <- varImp(model, scale = FALSE)
+plot(importance)
+
+# Building the model with the selected variables
+newFormula <- "credit.rating ~ account.balance + credit.purpose + previous.credit.payment.status + savings + credit.duration.months"
+newFormula <- as.formula(newFormula)
+lrNewModel <- glm(formula = newFormula, data = df_train, family = "binomial")
+
+# Viewing the template
+summary(lrNewModel)
+
+# Testing the Model in Test Data
+lrNewPrediction <- predict(lrNewModel, df_test, type = "response")
+lrNewPrediction <- round(lrNewPrediction)
+
+# Evaluating the model
+confusionMatrix(table(data = lrNewPrediction, reference = test.class.var), positive = '1')
+```
+
+## Step 7 - ROC Curve e Final Model Evaluation
+
+```{r curva}
+# Avaliando a performance do modelo
+# Creating ROC Curves
+lrModelBest <- lr.model
+lrPredictionValue <- predict(lrModelBest, test.feature.var, type = "response")
+predictions <- prediction(lrPredictionValue, test.class.var)
+par(mfrow = c(1, 2))
+plot.roc.curve(predictions, title.text = "ROC Curve")
+plot.pr.curve(predictions, title.text = "Precision/Recall Curve")
+```
+
+
+# Create a lot of models to check which one is better
+variables <- c("credit.rating", "account.balance", "credit.duration.months", "previous.credit.payment.", "credit.purpose", "credit.amount", "savings", "employment.duration", "installment.rate", "marital.status", "guarantor", "residence.duration", "current.assets", "age", "other.credits", "apartment.type", "bank.credits", "occupation", "dependents", "telephone", "foreign.worker")
+
+# Building the model with the selected variables
+newFormula <- "credit.rating ~ account.balance + credit.purpose + previous.credit.payment.status + savings + credit.duration.months"
+newFormula <- as.formula(newFormula)
+lrNewModel <- glm(formula = newFormula, data = df_train, family = "binomial")
+
+# Viewing the template
+summary(lrNewModel)
+
+# Testing the Model in Test Data
+lrNewPrediction <- predict(lrNewModel, df_test, type = "response")
+lrNewPrediction <- round(lrNewPrediction)
+
+# Evaluating the model
+confusionMatrix(table(data = lrNewPrediction, reference = test.class.var), positive = '1')
+
+# Avaliando a performance do modelo
+# Creating ROC Curves
+lrModelBest <- lr.model
+lrPredictionValue <- predict(lrModelBest, test.feature.var, type = "response")
+predictions <- prediction(lrPredictionValue, test.class.var)
+par(mfrow = c(1, 2))
+plot.roc.curve(predictions, title.text = "ROC Curve")
+plot.pr.curve(predictions, title.text = "Precision/Recall Curve")
+
+
+
+
+## Step 8 - Select variables, ROC Curve and Final Model Evaluation
+```{r remodeling}
+df2 <- read.csv("credit_dataset.csv", header = TRUE, sep = ',')
+names(df2) <- c("cr", "ab", "cdm", "pcps", "cp", "cra", "s", "ed", "ir", "ms", "g", "rd", "cua", "a", "oc", "at", "bc", "o", "d", "t", "fw")
+data <- cor(df2)
+corrplot(data, method="color",  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         tl.cex = 0.8, cl.cex = 0.8, number.cex = 0.8,
+         # Combine with significance
+         sig.level = 0.01, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+)
+```
+
+var <- names(df)
+result <- character(0)
+for (item in 1:length(var)){
+  colName <- colnames(df[item])
+  correlation <- cor(as.numeric(df$credit.rating), as.numeric(df[[item]]))
+  result[item] <- paste(colName, correlation)
+}
+
+cor(as.numeric(df$credit.rating), as.numeric(df[[2]]))
+
+result
+length(var)
